@@ -37,7 +37,6 @@ export class ChatService {
     // USER gửi tin nhắn
     async sendUserMessage(sessionId: string, content: string, name?: string, email?: string, userId?: string) {
 
-        // init thì chỉ tạo conversation
         if (content === "__init__") {
             await this.getOrCreateConversation(sessionId, name, email, userId);
             return { ok: true };
@@ -45,40 +44,58 @@ export class ChatService {
 
         const conversation = await this.getOrCreateConversation(sessionId, name, email, userId);
 
-        await this.messageModel.create({
+        const msg = await this.messageModel.create({
             conversationId: conversation._id,
             sender: "USER",
             content
         });
 
-        // đánh dấu cho admin biết có tin chưa đọc
+        // Cập nhật unread
         await this.conversationModel.updateOne(
             { _id: conversation._id },
             { hasUnread: true }
         );
 
-        return { ok: true };
-    }
+        // 🚀 Emit cho admin / user khác
+        this.gateway.emitNewMessage({
+            conversationId: conversation._id,
+            sender: "USER",
+            content,
+            // createdAt: msg.createdAt
+        });
 
+        return msg;
+    }
 
 
     // ADMIN gửi tin
     async adminReply(conversationId: string, content: string) {
-        await this.conversationModel.updateOne(
-            { _id: conversationId },
-            {
-                hasUnread: false,
-                updatedAt: new Date() // 🔥 BẮT BUỘC
-            }
-        );
 
-
-        return this.messageModel.create({
+        const msg = await this.messageModel.create({
             conversationId,
             sender: "ADMIN",
             content
         });
+
+        await this.conversationModel.updateOne(
+            { _id: conversationId },
+            {
+                hasUnread: false,
+                updatedAt: new Date()
+            }
+        );
+
+        // 🚀 Bắn socket cho client
+        this.gateway.emitNewMessage({
+            conversationId,
+            sender: "ADMIN",
+            content,
+            // createdAt: msg.createdAt
+        });
+
+        return msg;
     }
+
 
 
     // lấy lịch sử chat

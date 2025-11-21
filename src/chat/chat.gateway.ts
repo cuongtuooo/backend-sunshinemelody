@@ -1,4 +1,9 @@
-import { WebSocketGateway, WebSocketServer } from '@nestjs/websockets';
+import {
+  WebSocketGateway,
+  WebSocketServer,
+  OnGatewayConnection,
+  OnGatewayDisconnect,
+} from '@nestjs/websockets';
 import { Server } from 'socket.io';
 
 @WebSocketGateway({
@@ -6,11 +11,20 @@ import { Server } from 'socket.io';
     origin: '*',
   },
 })
-export class ChatGateway {
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  sendToAll(event: string, data: any) {
-    this.server.emit(event, data);
+  handleConnection(client: any) {
+    console.log(`⚡ Client connected: ${client.id}`);
+  }
+
+  handleDisconnect(client: any) {
+    console.log(`❌ Client disconnected: ${client.id}`);
+  }
+
+  // Hàm dùng để bắn socket ra toàn hệ thống
+  emitNewMessage(payload: any) {
+    this.server.emit("new_message", payload);
   }
 }
