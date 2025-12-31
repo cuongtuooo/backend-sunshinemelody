@@ -21,6 +21,33 @@ export class OrderService {
 
   // ---------------- CREATE ----------------
   async create(createOrderDto: CreateOrderDto, user: IUser) {
+    // 1. Kiểm tra tồn kho từng sản phẩm
+    for (const item of createOrderDto.detail) {
+      const product = await this.productModel.findById(item._id);
+      if (!product) {
+        throw new BadRequestException(`Sản phẩm với id ${item._id} không tồn tại`);
+      }
+
+      if (product.quantity < item.quantity) {
+        throw new BadRequestException(
+          `Sản phẩm "${product.name}" chỉ còn ${product.quantity} sản phẩm`,
+        );
+      }
+    }
+
+    // 2. Trừ tồn kho (giữ hàng) ngay khi tạo đơn pending
+    for (const item of createOrderDto.detail) {
+      await this.productModel.updateOne(
+        { _id: item._id },
+        {
+          $inc: {
+            quantity: -item.quantity, // trừ kho
+          },
+        },
+      );
+    }
+
+    // 3. Tạo đơn ở trạng thái "pending"
     const newOrder = await this.orderModel.create({
       ...createOrderDto,
       status: 'pending',
@@ -109,20 +136,34 @@ export class OrderService {
       );
     }
 
-    // Nếu hoàn tất (user bấm "Đã nhận hàng") → trừ tồn kho & tăng sold
+    // Khi đơn "Hoàn tất" → chỉ cộng sold, kho đã trừ từ lúc pending rồi
     if (nextStatus === 'completed') {
       for (const item of order.detail) {
         await this.productModel.updateOne(
           { _id: item._id },
           {
             $inc: {
-              quantity: -item.quantity,
-              sold: item.quantity,
+              sold: item.quantity, // chỉ cộng doanh số
             },
           },
         );
       }
     }
+
+    // Nếu đơn hoàn hàng xong → trả lại hàng về kho
+    if (nextStatus === 'returned-completed') {
+      for (const item of order.detail) {
+        await this.productModel.updateOne(
+          { _id: item._id },
+          {
+            $inc: {
+              quantity: item.quantity, // trả lại tồn kho
+            },
+          },
+        );
+      }
+    }
+
 
     // Cập nhật trạng thái
     order.status = nextStatus;
@@ -150,6 +191,18 @@ export class OrderService {
       );
     }
 
+    // Vì đã trừ kho lúc tạo đơn, nên khi hủy phải cộng trả lại
+    for (const item of order.detail) {
+      await this.productModel.updateOne(
+        { _id: item._id },
+        {
+          $inc: {
+            quantity: item.quantity, // trả lại tồn kho
+          },
+        },
+      );
+    }
+
     order.status = 'canceled';
     // order.updatedBy = { _id: user._id, email: user.email };
     await order.save();
@@ -159,4 +212,5 @@ export class OrderService {
       status: order.status,
     };
   }
+
 }

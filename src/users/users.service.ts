@@ -41,35 +41,35 @@ export class UsersService {
   //   return user;
   // }
 
-  async create(createUserDto: CreateUserDto, user:IUser) {
-    const { email,  name, password} = createUserDto
+  async create(createUserDto: CreateUserDto, user: IUser) {
+    const { email, name, password, role, phone } = createUserDto;
 
-    // logic checkmail
     const isExist = await this.userModel.findOne({ email });
-
     if (isExist) {
-      throw new BadRequestException(`email:${email} đã tồn tại`)
+      throw new BadRequestException(`email:${email} đã tồn tại`);
     }
 
-    const hassPassword = this.getHashPassword(password);
+    const hashedPassword = this.getHashPassword(password);
 
-    let newUser = await this.userModel.create({
+    const newUser = await this.userModel.create({
       name,
       email,
-      password: hassPassword,
-      role:"NORMAL_USER",
+      password: hashedPassword,
+      phone: phone,
+      role: new mongoose.Types.ObjectId(role),
       createdBy: {
         _id: user._id,
-        email: user.email
+        email: user.email,
       }
-    })
+    });
+
     return newUser;
-    
-  };
+  }
+
 
 
   async register(user: RegisterUserDto) {
-    const { email, name,password } = user
+    const { email, name,password, phone } = user
     // logic checkmail
     const isExist = await this.userModel.findOne({email});
 
@@ -86,6 +86,7 @@ export class UsersService {
       name,
       email,
       password:hassPassword,
+      phone: phone,
       role: userRole?._id
     })
     return newRegister;
@@ -163,25 +164,28 @@ export class UsersService {
 
   async remove(id: string, user: IUser) {
     if (!mongoose.Types.ObjectId.isValid(id))
-    return "không tìm thấy user"
-    
+      return "không tìm thấy user";
+
     const foundUser = await this.userModel.findById(id);
     if (foundUser && foundUser.email === "admin@gmail.com") {
-      throw new BadRequestException("Không thể xóa tài khoản admin@gmail.com")
+      throw new BadRequestException("Không thể xóa tài khoản admin@gmail.com");
     }
 
+    // Ghi log người xóa nếu cần
     await this.userModel.updateOne(
       { _id: id },
       {
-      deletedBy: {
-        _id: user._id,
-        email: user.email
-      }, })
+        deletedBy: {
+          _id: user._id,
+          email: user.email
+        }
+      }
+    );
 
-    return this.userModel.softDelete({
-      _id: id
-    })
+    // 🔥 HARD DELETE
+    return this.userModel.deleteOne({ _id: id });
   }
+
 
   updateUserToken = async (refreshToken: string, _id: string)=>{
     return await this.userModel.updateOne(

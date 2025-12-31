@@ -169,4 +169,16 @@ export class ProductService {
     return await this.productModel.deleteOne({ _id: id });
   }
 
+  async getRelated(id: string) {
+    const current = await this.productModel.findById(id);
+    if (!current) return [];
+
+    return this.productModel.find({
+      category: current.category,
+      _id: { $ne: id }
+    })
+      .limit(10)
+      .sort({ sold: -1 });
+  }
+
 }

@@ -33,6 +33,13 @@ export class ProductController {
     return this.productService.findOne(id);
   }
 
+  @Get("related/:id")
+  @Public()
+  async getRelated(@Param("id") id: string) {
+    return this.productService.getRelated(id);
+  }
+
+
   @Patch(':id')
   @ResponseMessage('Update product')
   update(
